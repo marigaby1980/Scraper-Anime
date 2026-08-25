@@ -1,8 +1,11 @@
-import consumet from '@consumet/extensions';
+import * as Consumet from '@consumet/extensions';
 
-// Handle CJS/ESM interop wrapping on Vercel serverless functions
-const ANIME = consumet.ANIME || (consumet.default && consumet.default.ANIME);
-const GogoanimeClass = ANIME?.Gogoanime || (ANIME?.default && ANIME.default.Gogoanime);
+// Safe namespace resolution across ESM and CJS bundler outputs
+const ANIME = Consumet.ANIME || Consumet.default?.ANIME;
+const GogoanimeClass = 
+  ANIME?.Gogoanime || 
+  Consumet.Gogoanime || 
+  Consumet.default?.Gogoanime;
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -24,11 +27,12 @@ export default async function handler(req, res) {
     if (!GogoanimeClass) {
       return res.status(500).json({
         error: 'Module Resolution Error',
-        details: 'Gogoanime provider class could not be loaded from @consumet/extensions'
+        details: 'Gogoanime provider class could not be resolved',
+        availableExports: Object.keys(Consumet)
       });
     }
 
-    // Safely instantiate provider
+    // Instantiate provider instance
     const gogoanime = new GogoanimeClass();
 
     // 1. Search Anime: ?action=search&q=demon+slayer
@@ -47,15 +51,16 @@ export default async function handler(req, res) {
       return res.status(200).json(sources);
     }
 
-    // Default API Info Message
+    // Default status route
     return res.status(200).json({
       status: 'online',
-      message: 'Consumet API on Vercel is running successfully!',
-      examples: [
-        '/?action=search&q=naruto',
-        '/?action=watch&episodeId=naruto-episode-1'
-      ]
+      message: 'Consumet API on Vercel is online and operating correctly!',
+      endpoints: {
+        search: '/?action=search&q=naruto',
+        watch: '/?action=watch&episodeId=naruto-episode-1'
+      }
     });
+
   } catch (error) {
     return res.status(500).json({
       error: 'Scraper Error',
