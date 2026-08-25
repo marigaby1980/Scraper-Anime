@@ -1,11 +1,21 @@
 import * as Consumet from '@consumet/extensions';
 
-// Safe namespace resolution across ESM and CJS bundler outputs
-const ANIME = Consumet.ANIME || Consumet.default?.ANIME;
-const GogoanimeClass = 
-  ANIME?.Gogoanime || 
-  Consumet.Gogoanime || 
-  Consumet.default?.Gogoanime;
+// Inspect all layers to safely resolve Gogoanime class
+function getGogoanimeClass() {
+  const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
+  if (!animeObj) return null;
+
+  if (typeof animeObj.Gogoanime === 'function') {
+    return animeObj.Gogoanime;
+  }
+  if (animeObj.Gogoanime?.default && typeof animeObj.Gogoanime.default === 'function') {
+    return animeObj.Gogoanime.default;
+  }
+  if (animeObj.default?.Gogoanime && typeof animeObj.default.Gogoanime === 'function') {
+    return animeObj.default.Gogoanime;
+  }
+  return null;
+}
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -24,15 +34,18 @@ export default async function handler(req, res) {
   const { action, q, episodeId } = req.query;
 
   try {
+    const GogoanimeClass = getGogoanimeClass();
+
     if (!GogoanimeClass) {
+      const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
       return res.status(500).json({
         error: 'Module Resolution Error',
         details: 'Gogoanime provider class could not be resolved',
-        availableExports: Object.keys(Consumet)
+        animeKeys: animeObj ? Object.keys(animeObj) : 'ANIME is null/undefined'
       });
     }
 
-    // Instantiate provider instance
+    // Safely instantiate provider instance
     const gogoanime = new GogoanimeClass();
 
     // 1. Search Anime: ?action=search&q=demon+slayer
