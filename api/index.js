@@ -1,43 +1,58 @@
-import express from 'express';
-import cors from 'cors';
 import { ANIME } from '@consumet/extensions';
 
-const app = express();
-app.use(cors());
+export default async function handler(req, res) {
+  // Enable CORS so your app can fetch data from this API
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
 
-// Initialize Gogoanime provider instance
-const gogoanime = new ANIME.Gogoanime();
-
-// Root route
-app.get('/api', (req, res) => {
-  res.json({
-    status: 'online',
-    message: 'Consumet Anime Scraper API is running smoothly on Vercel!'
-  });
-});
-
-// Search Anime Endpoint
-// Example: /api/anime/search?q=demon+slayer
-app.get('/api/anime/search', async (req, res) => {
-  try {
-    const query = req.query.q || 'Naruto';
-    const results = await gogoanime.search(query);
-    res.json(results);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  // Handle preflight browser requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
   }
-});
 
-// Watch Episode Endpoint
-// Example: /api/anime/watch/kimetsu-no-yaiba-episode-1
-app.get('/api/anime/watch/:episodeId', async (req, res) => {
+  const { action, q, episodeId } = req.query;
+
   try {
-    const { episodeId } = req.params;
-    const sources = await gogoanime.fetchEpisodeSources(episodeId);
-    res.json(sources);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    // Lazy-initialize scraper inside handler so startup errors are caught cleanly
+    const gogoanime = new ANIME.Gogoanime();
 
-export default app;
+    // 1. Search Anime: ?action=search&q=naruto
+    if (action === 'search') {
+      const query = q || 'Naruto';
+      const results = await gogoanime.search(query);
+      return res.status(200).json(results);
+    }
+
+    // 2. Watch Episode: ?action=watch&episodeId=naruto-episode-1
+    if (action === 'watch') {
+      if (!episodeId) {
+        return res.status(400).json({ error: 'Missing episodeId parameter' });
+      }
+      const sources = await gogoanime.fetchEpisodeSources(episodeId);
+      return res.status(200).json(sources);
+    }
+
+    // Default status message
+    return res.status(200).json({
+      status: 'online',
+      message: 'Consumet API on Vercel is running successfully!',
+      endpoints: {
+        search: '/api/anime?action=search&q=demon+slayer',
+        watch: '/api/anime?action=watch&episodeId=kimetsu-no-yaiba-episode-1'
+      }
+    });
+
+  } catch (error) {
+    console.error('Vercel Scraper Error:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch data from provider',
+      details: error.message || String(error)
+    });
+  }
+}
