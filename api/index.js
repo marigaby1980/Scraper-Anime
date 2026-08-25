@@ -2,68 +2,40 @@ import * as Consumet from '@consumet/extensions';
 
 const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
 
-// Working fallback domains for popular anime scrapers
+// Strictly active domains provided by user
 const DOMAIN_MAP = {
-  hianime: ['https://hianime.to', 'https://hianime.vc', 'https://hianime.nz'],
-  animepahe: ['https://animepahe.ru', 'https://animepahe.com', 'https://animepahe.org'],
-  gogoanime: ['https://anitaku.pe', 'https://gogoanime3.co']
+  hianime: 'https://hianime.ms',
+  animepahe: 'https://animepahe.ch',
+  gogoanime: 'https://gogoanime.by'
 };
 
-// Helper to safely instantiate a provider with a specific custom baseUrl
-function createProviderInstance(providerKey, customUrl = null) {
-  if (!animeObj || !animeObj[providerKey]) return null;
-  const TargetClass = typeof animeObj[providerKey] === 'function' 
-    ? animeObj[providerKey] 
-    : animeObj[providerKey].default;
+// Helper to instantiate provider with the specific working domain
+function getProviderInstance(providerName = 'hianime') {
+  if (!animeObj) return null;
 
-  if (!TargetClass) return null;
+  const keyLower = providerName.toLowerCase();
+  const providerKey = Object.keys(animeObj).find(
+    k => k.toLowerCase() === keyLower
+  ) || 'Hianime';
+
+  const ProviderClass = typeof animeObj[providerKey] === 'function' 
+    ? animeObj[providerKey] 
+    : animeObj[providerKey]?.default;
+
+  if (!ProviderClass) return null;
+
+  const customUrl = DOMAIN_MAP[keyLower] || DOMAIN_MAP.hianime;
 
   try {
-    return customUrl ? new TargetClass(customUrl) : new TargetClass();
+    return new ProviderClass(customUrl);
   } catch (err) {
-    return null;
+    // If provider constructor doesn't accept a custom URL parameter, fallback to default constructor
+    return new ProviderClass();
   }
-}
-
-// Executes a scraper action with automatic domain & provider fallback
-async function executeWithFallback(requestedProvider, actionFn) {
-  const providerList = Object.keys(animeObj || {});
-  
-  // Rank requested provider first, followed by available fallbacks
-  const targetKey = providerList.find(p => p.toLowerCase() === requestedProvider.toLowerCase()) 
-    || 'Hianime';
-
-  const providersToTry = [
-    targetKey,
-    ...providerList.filter(p => p !== targetKey)
-  ];
-
-  let lastError = null;
-
-  for (const key of providersToTry) {
-    const keyLower = key.toLowerCase();
-    const customDomains = DOMAIN_MAP[keyLower] || [null];
-
-    for (const domain of customDomains) {
-      try {
-        const instance = createProviderInstance(key, domain);
-        if (!instance) continue;
-
-        // Run the scraper request (search, info, watch)
-        const result = await actionFn(instance);
-        if (result) return { data: result, providerUsed: key, domainUsed: domain || 'default' };
-      } catch (err) {
-        lastError = err;
-        // Continue loop to try next domain or provider
-      }
-    }
-  }
-
-  throw lastError || new Error('All anime scraper providers failed to respond');
 }
 
 export default async function handler(req, res) {
-  // CORS Headers
+  // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
@@ -79,11 +51,20 @@ export default async function handler(req, res) {
   const { action, q, episodeId, id, provider = 'hianime' } = req.query;
 
   try {
-    // 1. Search Anime: ?action=search&q=naruto
+    const animeProvider = getProviderInstance(provider);
+
+    if (!animeProvider) {
+      return res.status(500).json({
+        error: 'Provider Initialization Error',
+        details: `Could not load provider instance for '${provider}'`
+      });
+    }
+
+    // 1. Search Anime: ?action=search&q=demon+slayer
     if (action === 'search') {
       const query = q || 'Naruto';
-      const result = await executeWithFallback(provider, (p) => p.search(query));
-      return res.status(200).json(result);
+      const results = await animeProvider.search(query);
+      return res.status(200).json(results);
     }
 
     // 2. Watch Episode: ?action=watch&episodeId=episode-id
@@ -91,27 +72,27 @@ export default async function handler(req, res) {
       if (!episodeId) {
         return res.status(400).json({ error: 'Missing episodeId parameter' });
       }
-      const result = await executeWithFallback(provider, (p) => p.fetchEpisodeSources(episodeId));
-      return res.status(200).json(result);
+      const sources = await animeProvider.fetchEpisodeSources(episodeId);
+      return res.status(200).json(sources);
     }
 
-    // 3. Anime Info: ?action=info&id=anime-id
+    // 3. Anime Info & Episodes: ?action=info&id=anime-id
     if (action === 'info') {
       if (!id) {
         return res.status(400).json({ error: 'Missing id parameter' });
       }
-      const result = await executeWithFallback(provider, (p) => p.fetchAnimeInfo(id));
-      return res.status(200).json(result);
+      const info = await animeProvider.fetchAnimeInfo(id);
+      return res.status(200).json(info);
     }
 
     // Default status route
     return res.status(200).json({
       status: 'online',
-      message: 'Consumet API on Vercel is running with automatic failover!',
-      availableProviders: Object.keys(animeObj || {}),
+      message: 'Consumet API on Vercel is running using active domains!',
+      activeDomains: DOMAIN_MAP,
       endpoints: {
         search: '/?action=search&q=demon+slayer',
-        searchWithProvider: '/?action=search&q=demon+slayer&provider=hianime',
+        searchWithProvider: '/?action=search&q=demon+slayer&provider=animepahe',
         info: '/?action=info&id=anime-id',
         watch: '/?action=watch&episodeId=episode-id'
       }
@@ -119,7 +100,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     return res.status(500).json({
-      error: 'Scraper Fetch Error',
+      error: 'Scraper Error',
       message: error.message || String(error)
     });
   }
