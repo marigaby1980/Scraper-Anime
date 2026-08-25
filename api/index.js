@@ -1,4 +1,8 @@
-import { ANIME } from '@consumet/extensions';
+import consumet from '@consumet/extensions';
+
+// Handle CJS/ESM interop wrapping on Vercel serverless functions
+const ANIME = consumet.ANIME || (consumet.default && consumet.default.ANIME);
+const GogoanimeClass = ANIME?.Gogoanime || (ANIME?.default && ANIME.default.Gogoanime);
 
 export default async function handler(req, res) {
   // CORS Headers
@@ -17,7 +21,15 @@ export default async function handler(req, res) {
   const { action, q, episodeId } = req.query;
 
   try {
-    const gogoanime = new ANIME.Gogoanime();
+    if (!GogoanimeClass) {
+      return res.status(500).json({
+        error: 'Module Resolution Error',
+        details: 'Gogoanime provider class could not be loaded from @consumet/extensions'
+      });
+    }
+
+    // Safely instantiate provider
+    const gogoanime = new GogoanimeClass();
 
     // 1. Search Anime: ?action=search&q=demon+slayer
     if (action === 'search') {
@@ -35,10 +47,10 @@ export default async function handler(req, res) {
       return res.status(200).json(sources);
     }
 
-    // Default API Info Message when opening root URL
+    // Default API Info Message
     return res.status(200).json({
       status: 'online',
-      message: 'Consumet API on Vercel is working!',
+      message: 'Consumet API on Vercel is running successfully!',
       examples: [
         '/?action=search&q=naruto',
         '/?action=watch&episodeId=naruto-episode-1'
