@@ -1,24 +1,24 @@
-const express = require('express');
-const cors = require('cors');
-const { ANIME } = require('@consumet/extensions');
+import express from 'express';
+import cors from 'cors';
+import { ANIME } from '@consumet/extensions';
 
 const app = express();
 app.use(cors());
 
-// Initialize Gogoanime provider
+// Initialize Gogoanime provider instance
 const gogoanime = new ANIME.Gogoanime();
 
-// API Root / Status
-app.get('/', (req, res) => {
+// Root route
+app.get('/api', (req, res) => {
   res.json({
     status: 'online',
-    message: 'Consumet Anime Scraper Serverless API on Vercel is live!'
+    message: 'Consumet Anime Scraper API is running smoothly on Vercel!'
   });
 });
 
-// Search Anime
-// Example: /anime/search?q=Demon+Slayer
-app.get('/anime/search', async (req, res) => {
+// Search Anime Endpoint
+// Example: /api/anime/search?q=demon+slayer
+app.get('/api/anime/search', async (req, res) => {
   try {
     const query = req.query.q || 'Naruto';
     const results = await gogoanime.search(query);
@@ -28,9 +28,9 @@ app.get('/anime/search', async (req, res) => {
   }
 });
 
-// Get Episode Details & Stream Links
-// Example: /anime/watch/kimetsu-no-yaiba-episode-1
-app.get('/anime/watch/:episodeId', async (req, res) => {
+// Watch Episode Endpoint
+// Example: /api/anime/watch/kimetsu-no-yaiba-episode-1
+app.get('/api/anime/watch/:episodeId', async (req, res) => {
   try {
     const { episodeId } = req.params;
     const sources = await gogoanime.fetchEpisodeSources(episodeId);
@@ -40,4 +40,4 @@ app.get('/anime/watch/:episodeId', async (req, res) => {
   }
 });
 
-module.exports = app;
+export default app;
