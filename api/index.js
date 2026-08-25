@@ -1,20 +1,20 @@
 import * as Consumet from '@consumet/extensions';
 
-// Inspect all layers to safely resolve Gogoanime class
-function getGogoanimeClass() {
-  const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
+// Get available ANIME provider classes
+const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
+
+function getProvider(providerName = 'hianime') {
   if (!animeObj) return null;
 
-  if (typeof animeObj.Gogoanime === 'function') {
-    return animeObj.Gogoanime;
-  }
-  if (animeObj.Gogoanime?.default && typeof animeObj.Gogoanime.default === 'function') {
-    return animeObj.Gogoanime.default;
-  }
-  if (animeObj.default?.Gogoanime && typeof animeObj.default.Gogoanime === 'function') {
-    return animeObj.default.Gogoanime;
-  }
-  return null;
+  const key = Object.keys(animeObj).find(
+    k => k.toLowerCase() === providerName.toLowerCase()
+  );
+
+  const ProviderClass = key ? animeObj[key] : animeObj.Hianime || animeObj.AnimePahe;
+  if (!ProviderClass) return null;
+
+  const TargetClass = typeof ProviderClass === 'function' ? ProviderClass : ProviderClass.default;
+  return TargetClass ? new TargetClass() : null;
 }
 
 export default async function handler(req, res) {
@@ -31,46 +31,52 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const { action, q, episodeId } = req.query;
+  const { action, q, episodeId, provider } = req.query;
 
   try {
-    const GogoanimeClass = getGogoanimeClass();
+    const animeProvider = getProvider(provider || 'hianime');
 
-    if (!GogoanimeClass) {
-      const animeObj = Consumet.ANIME || Consumet.default?.ANIME;
+    if (!animeProvider) {
       return res.status(500).json({
-        error: 'Module Resolution Error',
-        details: 'Gogoanime provider class could not be resolved',
-        animeKeys: animeObj ? Object.keys(animeObj) : 'ANIME is null/undefined'
+        error: 'Provider Error',
+        details: 'Could not initialize anime provider',
+        availableProviders: Object.keys(animeObj || {})
       });
     }
-
-    // Safely instantiate provider instance
-    const gogoanime = new GogoanimeClass();
 
     // 1. Search Anime: ?action=search&q=demon+slayer
     if (action === 'search') {
       const query = q || 'Naruto';
-      const results = await gogoanime.search(query);
+      const results = await animeProvider.search(query);
       return res.status(200).json(results);
     }
 
-    // 2. Watch Episode: ?action=watch&episodeId=kimetsu-no-yaiba-episode-1
+    // 2. Watch Episode: ?action=watch&episodeId=hianime-episode-id
     if (action === 'watch') {
       if (!episodeId) {
         return res.status(400).json({ error: 'Missing episodeId parameter' });
       }
-      const sources = await gogoanime.fetchEpisodeSources(episodeId);
+      const sources = await animeProvider.fetchEpisodeSources(episodeId);
       return res.status(200).json(sources);
     }
 
-    // Default status route
+    // 3. Get Anime Info & Episodes: ?action=info&id=anime-id
+    if (action === 'info') {
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ error: 'Missing anime id parameter' });
+      const info = await animeProvider.fetchAnimeInfo(id);
+      return res.status(200).json(info);
+    }
+
+    // Default status route with documentation & provider list
     return res.status(200).json({
       status: 'online',
-      message: 'Consumet API on Vercel is online and operating correctly!',
+      message: 'Consumet Anime Scraper API on Vercel is live!',
+      availableProviders: Object.keys(animeObj || {}),
       endpoints: {
-        search: '/?action=search&q=naruto',
-        watch: '/?action=watch&episodeId=naruto-episode-1'
+        search: '/?action=search&q=demon+slayer',
+        info: '/?action=info&id=anime-id-from-search-results',
+        watch: '/?action=watch&episodeId=episode-id-from-info'
       }
     });
 
